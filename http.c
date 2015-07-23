@@ -501,10 +501,14 @@ Datum http_request(PG_FUNCTION_ARGS)
 	pfree(method_str);
 
 #if defined(USE_KEEPALIVE)
+	/* Initialize the global handle if needed */
+	if (!g_http_handle)
+		g_http_handle = curl_easy_init();		
+
 	/* Reuse our global handle. */
 	http_handle = g_http_handle;
 #else
-	/* Create a new handle for this request. */
+	/* Create a new handle for this request */
 	http_handle = curl_easy_init();
 #endif
 	if ( !http_handle )
