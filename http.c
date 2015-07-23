@@ -27,6 +27,8 @@
  *
  ***********************************************************************/
 
+#define USE_KEEPALIVE	1
+
 /* Constants */
 #define HTTP_VERSION "1.1"
 #define HTTP_ENCODING "gzip"
@@ -99,15 +101,30 @@ void _PG_fini(void);
 static size_t http_writeback(void *contents, size_t size, size_t nmemb, void *userp);
 static size_t http_readback(void *buffer, size_t size, size_t nitems, void *instream);
 
+#if defined(USE_KEEPALIVE)
+CURL * g_http_handle = NULL;
+#endif
+
 /* Startup */
 void _PG_init(void)
 {
 	curl_global_init(CURL_GLOBAL_ALL);
+
+#if defined(USE_KEEPALIVE)
+	/* Initialize CURL */
+	if ( ! (g_http_handle = curl_easy_init()) )
+		ereport(ERROR, (errmsg("Unable to initialize CURL")));
+#endif
 }
 
 /* Tear-down */
 void _PG_fini(void)
 {
+#if defined(USE_KEEPALIVE)
+	if (g_http_handle)
+		curl_easy_cleanup(g_http_handle);
+#endif
+
 	curl_global_cleanup();
 	elog(NOTICE, "Goodbye from HTTP %s", HTTP_VERSION);
 }
@@ -483,8 +500,14 @@ Datum http_request(PG_FUNCTION_ARGS)
 	elog(DEBUG2, "pgsql-http: method '%s'", method_str);
 	pfree(method_str);
 
-	/* Initialize CURL */
-	if ( ! (http_handle = curl_easy_init()) )
+#if defined(USE_KEEPALIVE)
+	/* Reuse our global handle. */
+	http_handle = g_http_handle;
+#else
+	/* Create a new handle for this request. */
+	http_handle = curl_easy_init();
+#endif
+	if ( !http_handle )
 		ereport(ERROR, (errmsg("Unable to initialize CURL")));
 
 	/* Set the target URL */
@@ -493,8 +516,13 @@ Datum http_request(PG_FUNCTION_ARGS)
 	/* Set the user agent */
 	CURL_SETOPT(http_handle, CURLOPT_USERAGENT, PG_VERSION_STR);
 
+#if defined(USE_KEEPALIVE)
+	/* Keep sockets held open */
+	CURL_SETOPT(http_handle, CURLOPT_FORBID_REUSE, 0);
+#else
 	/* Keep sockets from being held open */
 	CURL_SETOPT(http_handle, CURLOPT_FORBID_REUSE, 1);
+#endif
 
 	/* Set up the error buffer */
 	CURL_SETOPT(http_handle, CURLOPT_ERRORBUFFER, http_error_buffer);
@@ -519,8 +547,13 @@ Datum http_request(PG_FUNCTION_ARGS)
 	CURL_SETOPT(http_handle, CURLOPT_FOLLOWLOCATION, 1);
 	CURL_SETOPT(http_handle, CURLOPT_MAXREDIRS, 5);
 
+#if defined(USE_KEEPALIVE)
+	/* Add a keep alive option to the headers to reuse network sockets */
+	headers = curl_slist_append(headers, "Connection: Keep-Alive");
+#else
 	/* Add a close option to the headers to avoid open network sockets */
 	headers = curl_slist_append(headers, "Connection: close");
+#endif
 
 	/* Let our charset preference be known */
 	headers = curl_slist_append(headers, "Charsets: utf-8");
@@ -602,7 +635,13 @@ Datum http_request(PG_FUNCTION_ARGS)
 	if ( http_return != CURLE_OK )
 	{
 		curl_slist_free_all(headers);
+#if defined(USE_KEEPALIVE)
+		// Recycle the handle.
+		curl_easy_cleanup(g_http_handle);
+		g_http_handle = curl_easy_init();
+#else
 		curl_easy_cleanup(http_handle);
+#endif
 		http_error(http_return, http_error_buffer);
 	}
 
@@ -611,7 +650,13 @@ Datum http_request(PG_FUNCTION_ARGS)
 	     (CURLE_OK != curl_easy_getinfo(http_handle, CURLINFO_CONTENT_TYPE, &content_type)) )
 	{
 		curl_slist_free_all(headers);
+#if defined(USE_KEEPALIVE)
+		// Recycle the handle.
+		curl_easy_cleanup(g_http_handle);
+		g_http_handle = curl_easy_init();
+#else
 		curl_easy_cleanup(http_handle);
+#endif
 		ereport(ERROR, (errmsg("CURL: Error in curl_easy_getinfo")));
 	}
 
@@ -669,7 +714,9 @@ Datum http_request(PG_FUNCTION_ARGS)
 
 	/* Clean up */
 	ReleaseTupleDesc(tup_desc);
+#if !defined(USE_KEEPALIVE)	
 	curl_easy_cleanup(http_handle);
+#endif
 	curl_slist_free_all(headers);
 	pfree(si_headers.data);
 	pfree(si_data.data);
@@ -760,3 +807,9 @@ Datum urlencode(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(cstring_to_text(str_out));
 }
 
+// Local Variables:
+// mode: C++
+// tab-width: 4
+// c-basic-offset: 4
+// indent-tabs-mode: t
+// End:
