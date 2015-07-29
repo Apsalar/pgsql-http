@@ -145,6 +145,25 @@ The `headers` field for requests and response is a PostgreSQL array of type `htt
 
 As seen in the examples, you can easily unspool the array of `http_header` tuples into a result set using the PostgreSQL `unnest()` function on the array. From there you can easily select the particular header you are interested in.
 
+## Keep-Alive
+
+By default each request uses a fresh connection and assures that the connection is closed when the request is done.  This behavior reduces the chance of consuming system resources (sockets) as the extension runs over extended periods of time.
+
+High-performance applications may wish to enable keep-alive and connection persistence to reduce latency and enhance throughput.  The following command changes the behavior of the http extension to maintain connections as long as possible for all subsequent requests:
+
+    SELECT http_set_keepalive(TRUE);
+
+The http_set_keepalive() command returns the previous setting if you wish to restore it.
+
+## Timeouts
+
+By default a 5 second timeout is set for the completion of a request.  If a different timeout is desired the following command can be used to change it for all subsequent requests:
+
+    SELECT http_set_timeout_msec(200);
+
+The http_set_timeout_msec() command returns the previous setting if
+you wish to restore it.
+
 ## Functions
 
 * `http_header(field VARCHAR, value VARCHAR)` returns `http_header`
@@ -154,6 +173,8 @@ As seen in the examples, you can easily unspool the array of `http_header` tuple
 * `http_put(uri VARCHAR, content VARCHAR, content_type VARCHAR)` returns `http_response`
 * `http_delete(uri VARCHAR)` returns `http_resonse`
 * `urlencode(string VARCHAR)` returns `text`
+* `http_set_keepalive(reuse BOOLEAN) returns `BOOLEAN`
+* `http_set_timeout_msec(timeout INTEGER) return `INTEGER`
 
 ## Installation
 
