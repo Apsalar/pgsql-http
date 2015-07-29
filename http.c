@@ -101,6 +101,8 @@ void _PG_fini(void);
 static size_t http_writeback(void *contents, size_t size, size_t nmemb, void *userp);
 static size_t http_readback(void *buffer, size_t size, size_t nitems, void *instream);
 
+static long g_timeout_msec = 5000;
+
 #if defined(USE_KEEPALIVE)
 CURL * g_http_handle = NULL;
 #endif
@@ -541,7 +543,7 @@ Datum http_request(PG_FUNCTION_ARGS)
 	CURL_SETOPT(http_handle, CURLOPT_WRITEHEADER, (void*)(&si_headers));
 
 	/* Set up the HTTP timeout */
-	CURL_SETOPT(http_handle, CURLOPT_TIMEOUT, 5);
+	CURL_SETOPT(http_handle, CURLOPT_TIMEOUT_MS, g_timeout_msec);
 	CURL_SETOPT(http_handle, CURLOPT_CONNECTTIMEOUT, 1);
 
 	/* Set the HTTP content encoding to gzip */
@@ -809,6 +811,19 @@ Datum urlencode(PG_FUNCTION_ARGS)
 	*ptr = '\0';
 
 	PG_RETURN_TEXT_P(cstring_to_text(str_out));
+}
+
+/**
+* Function which changes the CURLOPT_TIMEOUT_MS value, returns the old value.
+*/
+
+Datum http_set_timeout_msec(PG_FUNCTION_ARGS);
+PG_FUNCTION_INFO_V1(http_set_timeout_msec);
+Datum http_set_timeout_msec(PG_FUNCTION_ARGS)
+{
+	int32 old_timeout = (int32) g_timeout_msec;
+	g_timeout_msec = (long) PG_GETARG_INT32(0);
+	PG_RETURN_INT32(old_timeout);
 }
 
 // Local Variables:
