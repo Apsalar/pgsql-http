@@ -35,6 +35,7 @@
 #include <regex.h>
 #include <string.h>
 #include <stdlib.h>
+#include <limits.h>	/* INT_MAX */
 
 /* PostgreSQL */
 #include <postgres.h>
@@ -48,6 +49,7 @@
 #include <utils/lsyscache.h>
 #include <utils/syscache.h>
 #include <utils/typcache.h>
+#include "utils/guc.h"
 
 #if PG_VERSION_NUM >= 90300
 #include <access/htup_details.h>
@@ -99,13 +101,38 @@ void _PG_fini(void);
 static size_t http_writeback(void *contents, size_t size, size_t nmemb, void *userp);
 static size_t http_readback(void *buffer, size_t size, size_t nitems, void *instream);
 
-static bool g_use_keepalive = false;
+static bool g_use_keepalive;
+static int g_timeout_msec;
+
 static CURL * g_http_handle = NULL;
-static long g_timeout_msec = 5000;
 
 /* Startup */
 void _PG_init(void)
 {
+	DefineCustomBoolVariable("http.keepalive",
+							 "reuse existing connections with keepalive",
+							 NULL,
+							 &g_use_keepalive,
+							 false,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE,
+							 NULL,
+							 NULL,
+							 NULL);
+	
+	DefineCustomIntVariable("http.timeout_msec",
+							"request completion timeout in milliseconds",
+							NULL,
+							&g_timeout_msec,
+							5000,
+							0,
+							INT_MAX,
+							PGC_USERSET,
+							GUC_NOT_IN_SAMPLE | GUC_UNIT_MS,
+							NULL,
+							NULL,
+							NULL);
+	
 	curl_global_init(CURL_GLOBAL_ALL);
 }
 
@@ -792,32 +819,6 @@ Datum urlencode(PG_FUNCTION_ARGS)
 	*ptr = '\0';
 
 	PG_RETURN_TEXT_P(cstring_to_text(str_out));
-}
-
-/**
-* Function which changes the CURL keepalive policy, returns the old value.
-*/
-
-Datum http_set_keepalive(PG_FUNCTION_ARGS);
-PG_FUNCTION_INFO_V1(http_set_keepalive);
-Datum http_set_keepalive(PG_FUNCTION_ARGS)
-{
-	bool old_keepalive = g_use_keepalive;
-	g_use_keepalive = PG_GETARG_BOOL(0);
-	PG_RETURN_BOOL(old_keepalive);
-}
-
-/**
-* Function which changes the CURLOPT_TIMEOUT_MS value, returns the old value.
-*/
-
-Datum http_set_timeout_msec(PG_FUNCTION_ARGS);
-PG_FUNCTION_INFO_V1(http_set_timeout_msec);
-Datum http_set_timeout_msec(PG_FUNCTION_ARGS)
-{
-	int32 old_timeout = (int32) g_timeout_msec;
-	g_timeout_msec = (long) PG_GETARG_INT32(0);
-	PG_RETURN_INT32(old_timeout);
 }
 
 // Local Variables:

@@ -149,20 +149,15 @@ As seen in the examples, you can easily unspool the array of `http_header` tuple
 
 By default each request uses a fresh connection and assures that the connection is closed when the request is done.  This behavior reduces the chance of consuming system resources (sockets) as the extension runs over extended periods of time.
 
-High-performance applications may wish to enable keep-alive and connection persistence to reduce latency and enhance throughput.  The following command changes the behavior of the http extension to maintain connections as long as possible for all subsequent requests:
+High-performance applications may wish to enable keep-alive and connection persistence to reduce latency and enhance throughput.  The following GUC variable changes the behavior of the http extension to maintain connections as long as possible:
 
-    SELECT http_set_keepalive(TRUE);
-
-The http_set_keepalive() command returns the previous setting if you wish to restore it.
+    http.keepalive = 'on'
 
 ## Timeouts
 
-By default a 5 second timeout is set for the completion of a request.  If a different timeout is desired the following command can be used to change it for all subsequent requests:
+By default a 5 second timeout is set for the completion of a request.  If a different timeout is desired the following GUC variable can be used to set it in milliseconds:
 
-    SELECT http_set_timeout_msec(200);
-
-The http_set_timeout_msec() command returns the previous setting if
-you wish to restore it.
+    http.timeout_msec = 200
 
 ## Functions
 
@@ -173,8 +168,6 @@ you wish to restore it.
 * `http_put(uri VARCHAR, content VARCHAR, content_type VARCHAR)` returns `http_response`
 * `http_delete(uri VARCHAR)` returns `http_resonse`
 * `urlencode(string VARCHAR)` returns `text`
-* `http_set_keepalive(reuse BOOLEAN) returns `BOOLEAN`
-* `http_set_timeout_msec(timeout INTEGER) return `INTEGER`
 
 ## Installation
 
